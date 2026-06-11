@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Uploads
+uploads/
+
+# Test images
+test.jpg

@@ -1,10 +1,7 @@
-from datetime import datetime
+from datetime import datetime, UTC
 
-from sqlalchemy import String
-from sqlalchemy import DateTime
-
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
+from sqlalchemy import String, DateTime
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
 
@@ -12,36 +9,41 @@ from app.models.base import Base
 class Employee(Base):
     __tablename__ = "employees"
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True
-    )
+    id: Mapped[int] = mapped_column(primary_key=True)
 
     employee_code: Mapped[str] = mapped_column(
         String(50),
         unique=True,
-        nullable=False
+        nullable=False,
     )
 
     full_name: Mapped[str] = mapped_column(
         String(255),
-        nullable=False
+        nullable=False,
     )
 
     department: Mapped[str | None] = mapped_column(
         String(255),
-        nullable=True
+        nullable=True,
     )
 
     position: Mapped[str | None] = mapped_column(
         String(255),
-        nullable=True
+        nullable=True,
     )
 
     status: Mapped[str] = mapped_column(
         String(50),
-        default="active"
+        default="active",
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True)
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )
+
+    face_embeddings = relationship(
+        "FaceEmbedding",
+        back_populates="employee",
+        cascade="all, delete-orphan",
     )

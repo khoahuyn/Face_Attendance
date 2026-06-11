@@ -1,11 +1,16 @@
 from datetime import datetime, UTC
+from pathlib import Path
 
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.face_recognition_service import get_face_recognition_service
+from app.core.config import FACES_DIR
 from app.models.employee import Employee
+from app.models.face_embedding import FaceEmbedding
 from app.schemas.employee import EmployeeCreate
-from fastapi import HTTPException
+from app.schemas.face_registration import RegisterFaceResponse
 
 
 class EmployeeService:
@@ -60,6 +65,57 @@ class EmployeeService:
         db.refresh(employee)
 
         return employee
+
+    def register_face(
+        self,
+        db: Session,
+        employee_id: int,
+        files: list[UploadFile],
+        angles: list[str],
+    ) -> RegisterFaceResponse:
+        if len(files) != len(angles):
+            raise HTTPException(
+                status_code=400,
+                detail="Number of files must match number of angles",
+            )
+
+        employee = self.get_employee_by_id(db, employee_id)
+
+        employee_dir = FACES_DIR / employee.employee_code
+        employee_dir.mkdir(parents=True, exist_ok=True)
+
+        embeddings = []
+
+        for file, angle in zip(files, angles):
+            image_bytes = file.file.read()
+            file.file.seek(0)
+
+            extracted = get_face_recognition_service().extract_embedding(image_bytes)
+
+            image_path = employee_dir / f"{angle}.jpg"
+            image_path.write_bytes(image_bytes)
+
+            face_embedding = FaceEmbedding(
+                employee_id=employee.id,
+                embedding=extracted.embedding,
+                angle=angle,
+                face_image_path=str(image_path),
+                confidence=extracted.confidence,
+            )
+
+            db.add(face_embedding)
+            embeddings.append(face_embedding)
+
+        db.commit()
+
+        for emb in embeddings:
+            db.refresh(emb)
+
+        return RegisterFaceResponse(
+            employee_id=employee.id,
+            employee_code=employee.employee_code,
+            embeddings=embeddings,
+        )
 
 
 employee_service = EmployeeService()
