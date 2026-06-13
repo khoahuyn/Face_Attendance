@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
@@ -7,6 +7,7 @@ from app.schemas.face_embedding import (
     FaceEmbeddingResponse,
     FaceEmbeddingMatch,
     RecognizeFaceRequest,
+    RecognizeImageResponse,
 )
 from app.services.face_embedding import face_embedding_service
 
@@ -64,14 +65,12 @@ def create_embedding(
 )
 def recognize_face(
     data: RecognizeFaceRequest,
-    threshold: float = Query(default=0.6, ge=0.0, le=2.0),
     limit: int = Query(default=5, ge=1, le=20),
     db: Session = Depends(get_db),
 ):
     return face_embedding_service.find_similar(
         db=db,
         query_embedding=data.embedding,
-        threshold=threshold,
         limit=limit,
     )
 
@@ -87,4 +86,18 @@ def deactivate_embedding(
     return face_embedding_service.deactivate_embedding(
         db=db,
         embedding_id=embedding_id,
+    )
+
+
+@router.post(
+    "/recognize-image",
+    response_model=RecognizeImageResponse,
+)
+def recognize_image(
+    file: UploadFile = File(..., description="Face image to recognize"),
+    db: Session = Depends(get_db),
+):
+    return face_embedding_service.recognize_image(
+        db=db,
+        file=file,
     )

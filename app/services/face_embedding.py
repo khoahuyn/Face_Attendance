@@ -1,7 +1,9 @@
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ai.face_recognition_service import get_face_recognition_service
+from app.core.config import FACE_RECOGNITION_THRESHOLD
 from app.models.face_embedding import FaceEmbedding
 from app.models.employee import Employee
 from app.schemas.face_embedding import FaceEmbeddingCreate
@@ -65,17 +67,17 @@ class FaceEmbeddingService:
         self,
         db: Session,
         query_embedding: list[float],
-        threshold: float = 0.6,
+        threshold: float = FACE_RECOGNITION_THRESHOLD,
         limit: int = 5,
     ):
-        from pgvector.sqlalchemy import L2Distance
+        distance_expr = FaceEmbedding.embedding.cosine_distance(query_embedding).label("distance")
 
         statement = (
             select(
                 FaceEmbedding,
                 Employee.employee_code,
                 Employee.full_name,
-                L2Distance(FaceEmbedding.embedding, query_embedding).label("distance"),
+                distance_expr,
             )
             .join(Employee, Employee.id == FaceEmbedding.employee_id)
             .where(FaceEmbedding.is_active.is_(True))
@@ -115,6 +117,50 @@ class FaceEmbeddingService:
         db.commit()
         db.refresh(embedding)
         return embedding
+
+    def recognize_image(
+        self,
+        db: Session,
+        file: UploadFile,
+        threshold: float = FACE_RECOGNITION_THRESHOLD,
+    ):
+        image_bytes = file.file.read()
+        file.file.seek(0)
+
+        extracted = get_face_recognition_service().extract_embedding(image_bytes)
+
+        distance_expr = FaceEmbedding.embedding.cosine_distance(extracted.embedding).label("distance")
+
+        statement = (
+            select(
+                FaceEmbedding,
+                Employee.employee_code,
+                Employee.full_name,
+                distance_expr,
+            )
+            .join(Employee, Employee.id == FaceEmbedding.employee_id)
+            .where(FaceEmbedding.is_active.is_(True))
+            .order_by("distance")
+            .limit(1)
+        )
+
+        results = db.execute(statement).all()
+
+        if not results:
+            raise HTTPException(
+                status_code=404,
+                detail="No active face embeddings found",
+            )
+
+        embedding, employee_code, full_name, distance = results[0]
+
+        return {
+            "employee_id": embedding.employee_id if distance <= threshold else None,
+            "employee_code": employee_code if distance <= threshold else None,
+            "full_name": full_name if distance <= threshold else None,
+            "distance": distance,
+            "matched": distance <= threshold,
+        }
 
 
 face_embedding_service = FaceEmbeddingService()

@@ -37,5 +37,13 @@ class FaceEmbeddingMatch(BaseModel):
     face_image_path: str | None = None
 
 
+class RecognizeImageResponse(BaseModel):
+    employee_id: int | None = None
+    employee_code: str | None = None
+    full_name: str | None = None
+    distance: float
+    matched: bool
+
+
 class RecognizeFaceRequest(BaseModel):
     embedding: list[float]

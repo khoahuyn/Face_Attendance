@@ -13,6 +13,9 @@ from app.schemas.employee import EmployeeCreate
 from app.schemas.face_registration import RegisterFaceResponse
 
 
+ALLOWED_ANGLES = {"front", "left", "right", "up", "down"}
+
+
 class EmployeeService:
 
     def get_employees(
@@ -79,7 +82,33 @@ class EmployeeService:
                 detail="Number of files must match number of angles",
             )
 
+        if not set(angles).issubset(ALLOWED_ANGLES):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid angles. Allowed: {ALLOWED_ANGLES}",
+            )
+
+        if len(angles) != len(set(angles)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate angles not allowed",
+            )
+
         employee = self.get_employee_by_id(db, employee_id)
+
+        existing_angles = db.scalars(
+            select(FaceEmbedding.angle).where(
+                FaceEmbedding.employee_id == employee.id,
+                FaceEmbedding.is_active == True,
+            )
+        ).all()
+
+        for angle in angles:
+            if angle in existing_angles:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Angle '{angle}' already registered for this employee",
+                )
 
         employee_dir = FACES_DIR / employee.employee_code
         employee_dir.mkdir(parents=True, exist_ok=True)
